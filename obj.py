@@ -10,7 +10,7 @@ obj.py
 Proposito: Clase objeto que carga archivos .obj
 """
 import struct
-from tezt import color 
+#from tezt import color 
 class Obj(object):
     def __init__(self,filename):
         with open(filename, 'r') as f:
@@ -19,6 +19,7 @@ class Obj(object):
         self.vertices = []
         self.faces = []
         self.textcoords = []
+        self.normals = []
         self.read()
 
 
@@ -33,6 +34,8 @@ class Obj(object):
                         self.faces.append([list(map(int,vert.split('/'))) for vert in value.split(' ')])
                     elif prefix == 'vt': # coordinatws
                         self.textcoords.append(list(map(float, value.split(' '))))
+                    elif prefix == 'vn': #normals
+                        self.normals.append(list(map(float, value.split(" "))))
 
 
 
@@ -58,7 +61,7 @@ class Texture(object):
                 b = ord(image.read(1))
                 g = ord(image.read(1))
                 r = ord(image.read(1))
-                self.pixels[y].append(color(r,g,b))
+                #.pixels[y].append(color(r,g,b))
         image.close()
     
     def get_color(self, tx, ty, intensity=1):

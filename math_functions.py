@@ -7,10 +7,13 @@ Mario Perdomo
 18029
 
 math_functions.py
-Proposito: Simplificar funciones matematicos
+Proposito: Simplificar funciones matematicos proporcionado por Dennis
 """
+from collections import namedtuple
 
-from tezt import V3
+V2 = namedtuple('Vertex2', ['x', 'y'])
+V3 = namedtuple('Vertex3', ['x', 'y', 'z'])
+
 def sum(v0, v1):
     """
         Input: 2 size 3 vectors
@@ -79,7 +82,7 @@ def barycentric(A, B, C, P):
     w = 1 - (cx + cy) / cz
 
     return w, v, u
-    
+
 def bbox(*vertices):
     xs = [ vertex.x for vertex in vertices ]
     ys = [ vertex.y for vertex in vertices ]

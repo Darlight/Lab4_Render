@@ -15,12 +15,9 @@ Proposito: Un framebuffer simple para pintar un punto con modificaciones simples
 #struc pack
 # wikipedia bmp file format
 import struct
-from collections import namedtuple
 from obj import Obj, Texture
 from math_functions import *
 
-V2 = namedtuple('Vertex2', ['x', 'y'])
-V3 = namedtuple('Vertex3', ['x', 'y', 'z'])
 #opcion = 0
 def char(c):
     # un char que vale un caracter de tipo string
@@ -58,8 +55,8 @@ class Render(object):
     def glInit(self):
         return "Bitmap creado... \n"
 
-    def point(self, x, y):
-        self.framebuffer[y][x] = self.color
+    def point(self, x, y, color):
+        self.framebuffer[y][x] = color
 
     def glCreateWindow(self, width=800, height=600):
         self.windowWidth = width
@@ -77,6 +74,12 @@ class Render(object):
         self.framebuffer = [
             [self.bg_color for x in range(self.windowWidth)] for y in range(self.windowHeight)
         ]
+        self.zbuffer = [
+        [-float('inf') for x in range(self.windowWidth)]
+        for y in range(self.windowHeight)
+        ]
+
+
 
     def glClearColor(self, r=0, g=0, b=0):
         self.bg_color = color(r,g,b)
@@ -87,7 +90,7 @@ class Render(object):
         newX = round((x + 1)*(self.viewPortWidth/2) + self.xPort)
         newY = round((y + 1)*(self.viewPortHeight/2) + self.yPort)
         #funcion point para optimar
-        self.point(newX,newY)
+        self.point(newX,newY,self.color)
 
     def glColor(self, r=0, g=0, b=0):
         #self.framebuffer[self.yPort][self.xPort] = color(r,g,b)
@@ -128,58 +131,17 @@ class Render(object):
         y = y1
         for x in range(x1, x2 + 1):
             if steep:
-                self.point(y, x)
+                self.point(y, x, self.color)
             else:
-                self.point(x, y)
+                self.point(x, y, self.color)
             
             offset += dy*2
 
             if offset >= threshold:
                 y += 1 if y1 < y2 else -1
                 threshold += dx*2
-
-    def triangle(self, A, B, C):
-        if A.y > B.y:
-           A, B = B, A
-        if A.y > C.y:
-         A, C = C, A
-        if B.y > C.y:
-            B, C = C, B
-
-        dx_ac = C.x - A.x
-        dy_ac = C.y - A.y
-        if dy_ac == 0:
-            return
-        mi_ac = dx_ac/dy_ac
-
-        dx_ab = B.x - A.x
-        dy_ab = B.y - A.y
-        if dy_ab != 0:
-            mi_ab = dx_ab/dy_ab
-
-            for y in range(A.y, B.y + 1):
-                xi = round(A.x - mi_ac * (A.y - y))
-                xf = round(A.x - mi_ab * (A.y - y))
-
-                if xi > xf:
-                    xi, xf = xf, xi
-                for x in range(xi, xf + 1):
-                    self.point(x, y)
-
-        dx_bc = C.x - B.x
-        dy_bc = C.y - B.y
-        if dy_bc:
-            mi_bc = dx_bc/dy_bc
-
-            for y in range(B.y, C.y + 1):
-                xi = round(A.x - mi_ac * (A.y - y))
-                xf = round(B.x - mi_bc * (B.y - y))
-
-                if xi > xf:
-                    xi, xf = xf, xi
-                for x in range(xi, xf + 1):
-                    self.point(x, y)
-
+                
+    
     def drawPolygon(self, points):
         iterations = len(points)
         for i in range(iterations):
@@ -190,7 +152,7 @@ class Render(object):
     def inundation_left(self, x, y, color1, color2):
         current_color = self.framebuffer[y][x]
         if (current_color != color1 and current_color != color2):
-            self.point(x,y)
+            self.point(x,y,self.color)
             #self.inundation(x+1,y,color1,color2)
             self.inundation_left(x,y+1,color1,color2)
             self.inundation_left(x-1,y,color1,color2)
@@ -199,30 +161,111 @@ class Render(object):
     def inundation_right(self, x, y, color1, color2):
         current_color = self.framebuffer[y][x]
         if (current_color != color1 and current_color != color2):
-            self.point(x,y)
+            self.point(x,y,self.color)
             self.inundation_right(x+1,y,color1,color2)
             self.inundation_right(x,y+1,color1,color2)
             #self.inundation(x-1,y,color1,color2)
             self.inundation_right(x,y-1,color1,color2)
 
+    def triangle(self, A, B, C, color_shade):
+        xmin, xmax, ymin, ymax = bbox(A, B, C)
+
+        for x in range(xmin, xmax + 1):
+            for y in range(ymin, ymax + 1):
+                
+                w, v, u = barycentric(A, B, C, V2(x, y))
+                if w < 0 or v < 0 or u < 0: 
+                    continue
+        
+                z = A.z * u + B.z * v + C.z * w
+
+                if z > self.zbuffer[y][x]:
+                    self.point(x, y, color_shade)
+                    self.zbuffer[y][x] = z
+
     def load(self, filename, translate=[0,0], scale=[1,1]):
         model = Obj(filename)
+        light = V3(0,0,1)
+        normal = V3(0,0,0)
 
         for face in model.faces:
             vcount = len(face)
-            for j in range(vcount):
-             vi1 = face[j][0] - 1
-             vi2 = face[(j+1) % vcount][0] - 1 
+            if vcount == 3:
+                face1 = face[0][0] - 1
+                face2 = face[1][0] - 1
+                face3 = face[2][0] - 1
 
-            v1 = model.vertices[vi1]
-            v2 = model.vertices[vi2]
-            #x1 = round((v1[0] *scale[0]) + translate[0])
-            x1 = round((v1[0] + translate[0]) * scale[0])
-            y1 = round((v1[1] + translate[1]) * scale[1])
-            x2 = round((v2[0] + translate[0]) * scale[0])
-            y2 = round((v2[1] + translate[1]) * scale[1])
+                v1 = model.vertices[face1]
+                v2 = model.vertices[face2]
+                v3 = model.vertices[face3]
+                
+                x1 = round((v1[0] * scale[0]) + translate[0])
+                y1 = round((v1[1] * scale[1]) + translate[1])
+                z1 = round((v1[2] * scale[2]) + translate[2])
 
-            self.Line(x1,y1, x2, y2)
+                x2 = round((v2[0] * scale[0]) + translate[0])
+                y2 = round((v2[1] * scale[1]) + translate[1])
+                z2 = round((v2[2] * scale[2]) + translate[2])
+
+                x3 = round((v3[0] * scale[0]) + translate[0])
+                y3 = round((v3[1] * scale[1]) + translate[1])
+                z3 = round((v3[2] * scale[2]) + translate[2])
+
+                a = V3(x1, y1, z1)
+                b = V3(x2, y2, z2)
+                c = V3(x3, y3, z3)
+
+                normal = cross(sub(b, a), sub(c, a))
+                intensity = dot(norm(normal), norm(light))
+                grey = round(255 * intensity)
+                if grey < 0:
+                    continue
+
+                intensity_color = color(grey, grey, grey)
+                self.triangle(a, b, c, intensity_color)
+            else:
+                face1 = face[0][0] - 1
+                face2 = face[1][0] - 1
+                face3 = face[2][0] - 1
+                face4 = face[3][0] - 1
+
+                v1 = model.vertices[face1]
+                v2 = model.vertices[face2]
+                v3 = model.vertices[face3]
+                v4 = model.vertices[face4]
+
+                x1 = round((v1[0] * scale[0]) + translate[0])
+                y1 = round((v1[1] * scale[1]) + translate[1])
+                z1 = round((v1[2] * scale[2]) + translate[2])
+
+                x2 = round((v2[0] * scale[0]) + translate[0])
+                y2 = round((v2[1] * scale[1]) + translate[1])
+                z2 = round((v2[2] * scale[2]) + translate[2])
+
+                x3 = round((v3[0] * scale[0]) + translate[0])
+                y3 = round((v3[1] * scale[1]) + translate[1])
+                z3 = round((v3[2] * scale[2]) + translate[2])
+
+                x4 = round((v4[0] * scale[0]) + translate[0])
+                y4 = round((v4[1] * scale[1]) + translate[1])
+                z4 = round((v4[2] * scale[2]) + translate[2])
+
+                a = V3(x1, y1, z1)
+                b = V3(x2, y2, z2)
+                c = V3(x3, y3, z3)
+                d = V3(x4, y4, z4)
+
+                normal = cross(sub(b, a), sub(c, a))
+                intensity = dot(norm(normal), norm(light))
+                grey = round(255 * intensity)
+                if grey < 0:
+                    continue
+
+                intensity_color = color(grey, grey, grey)
+
+                self.triangle(a, b, c, intensity_color)
+                self.triangle(a, c, d, intensity_color)
+
             
     def glFinish(self, filename):
         f = open(filename, 'bw')
@@ -250,7 +293,7 @@ class Render(object):
         f.write(dword(0))
 
         # pixel data
-
+        
         #ESTA COSA ERA MI ERROR, HABIA COLOCADO MAL LAS COORDENADAS 
         for x in range(self.windowHeight):
             for y in range(self.windowWidth):
@@ -266,12 +309,6 @@ class Render(object):
             self.inundation(x-1,y,color1,color2)
             self.inundation(x,y-1,color1,color2)
 """
-
-
-
-
-#bitmap es el producto final, debo hacer un  menu completo 
-# 128, 64
 
 
 """
